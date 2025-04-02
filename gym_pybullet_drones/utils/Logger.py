@@ -376,4 +376,4 @@ class Logger(object):
         if self.COLAB: 
             plt.savefig(os.path.join('results', 'output_figure.png'))
         else:
-            plt.show()
+            plt.savefig("output.png")

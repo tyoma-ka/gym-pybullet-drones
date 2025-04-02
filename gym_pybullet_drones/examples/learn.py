@@ -50,20 +50,13 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
     if not os.path.exists(filename):
         os.makedirs(filename+'/')
 
-    if not multiagent:
-        train_env = make_vec_env(HoverAviary,
-                                 env_kwargs=dict(obs=DEFAULT_OBS, act=DEFAULT_ACT, gui=DEFAULT_GUI,),
-                                 n_envs=1,
-                                 seed=0
-                                 )
-        eval_env = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
-    else:
-        train_env = make_vec_env(MultiHoverAviary,
-                                 env_kwargs=dict(num_drones=DEFAULT_AGENTS, obs=DEFAULT_OBS, act=DEFAULT_ACT, gui=DEFAULT_GUI,),
-                                 n_envs=1,
-                                 seed=0
-                                 )
-        eval_env = MultiHoverAviary(num_drones=DEFAULT_AGENTS, obs=DEFAULT_OBS, act=DEFAULT_ACT)
+    train_env = make_vec_env(HoverAviary,
+                             env_kwargs=dict(obs=DEFAULT_OBS, act=DEFAULT_ACT, gui=DEFAULT_GUI,),
+                             n_envs=1,
+                             seed=0
+                             )
+    eval_env = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
+
 
     #### Check the environment's spaces ########################
     print('[INFO] Action space:', train_env.action_space)
@@ -72,11 +65,25 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
     #### Train the model #######################################
     # train_env.observation_space.dtype = np.float32   ONLY FOR MPS
     # train_env.action_space.dtype = np.float32        ONLY FOR MPS
-    model = PPO('MlpPolicy',
-                train_env,
-                # tensorboard_log=filename+'/tb/',
-                # device="mps",
-                verbose=1)
+    model = PPO(
+        'MlpPolicy',
+        train_env,
+        verbose=1,
+
+        # Training Hyperparameters
+        learning_rate=3e-4,  # Adjust if needed
+        n_steps=2048,  # Increase for more stable updates
+        batch_size=64,  # Increase if learning is unstable
+        gamma=0.99,  # Discount factor for long-term rewards
+
+        # Policy & Exploration
+        ent_coef=0.01,  # Encourage exploration
+        clip_range=0.2,  # PPO clipping (reduces catastrophic updates)
+
+        # Normalize & Scale Rewards
+        normalize_advantage=True,
+        use_sde=True,  # Stochastic policy (improves exploration)
+    )
 
     #### Target cumulative rewards (problem-dependent) ##########
 
@@ -91,7 +98,7 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
                                  eval_freq=int(10000),
                                  deterministic=True,
                                  render=False)
-    model.learn(total_timesteps=int(500000) if local else int(1e2), # shorter training in GitHub Actions pytest
+    model.learn(total_timesteps=int(1_000_000),
                 callback=eval_callback,
                 log_interval=100)
 
@@ -122,19 +129,13 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
     model = PPO.load(path)
 
     #### Show (and record a video of) the model's performance ##
-    if not multiagent:
-        test_env = HoverAviary(gui=True,
-                               obs=DEFAULT_OBS,
-                               act=DEFAULT_ACT,
-                               record=record_video)
-        test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
-    else:
-        test_env = MultiHoverAviary(gui=True,
-                                        num_drones=DEFAULT_AGENTS,
-                                        obs=DEFAULT_OBS,
-                                        act=DEFAULT_ACT,
-                                        record=record_video)
-        test_env_nogui = MultiHoverAviary(num_drones=DEFAULT_AGENTS, obs=DEFAULT_OBS, act=DEFAULT_ACT)
+
+    test_env = HoverAviary(gui=True,
+                           obs=DEFAULT_OBS,
+                           act=DEFAULT_ACT,
+                           record=record_video)
+    test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
+
     logger = Logger(logging_freq_hz=int(test_env.CTRL_FREQ),
                 num_drones=DEFAULT_AGENTS if multiagent else 1,
                 output_folder=output_folder,

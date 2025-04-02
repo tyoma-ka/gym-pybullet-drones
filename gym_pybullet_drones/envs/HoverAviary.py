@@ -75,9 +75,16 @@ class HoverAviary(BaseRLAviary):
 
         """
         state = self._getDroneStateVector(0)
-        # ret = max(0, 16 - np.linalg.norm(self.TARGET_POS-state[0:3])**4)
-        ret = max(0, 3 - np.linalg.norm(self.TARGET_POS-state[0:3]))
-        return ret
+        distance = np.linalg.norm(self.TARGET_POS - state[0:3])
+        max_distance = np.linalg.norm(self.TARGET_POS)
+
+        # Define scaling factor (adjustable)
+        beta = 5 / max_distance  # Controls the sharpness of decay
+
+        # Exponential decay function
+        reward = np.exp(-beta * distance)
+
+        return reward
 
     ################################################################################
     
