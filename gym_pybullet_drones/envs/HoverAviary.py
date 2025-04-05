@@ -1,9 +1,10 @@
 import numpy as np
 
 from gym_pybullet_drones.envs.BaseRLAviary import BaseRLAviary
+from gym_pybullet_drones.envs.BaseRLFlyToAviary import BaseRLFlyToAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType
-
-class HoverAviary(BaseRLAviary):
+from gym_pybullet_drones.utils.utils import generate_random_target_point
+class HoverAviary(BaseRLFlyToAviary):
     """Single agent RL problem: hover at position."""
 
     ################################################################################
@@ -48,8 +49,8 @@ class HoverAviary(BaseRLAviary):
             The type of action space (1 or 3D; RPMS, thurst and torques, or waypoint with PID control)
 
         """
-        self.TARGET_POS = np.array([1,1,1])
         self.EPISODE_LEN_SEC = 16
+        self.total_timesteps = 0
         super().__init__(drone_model=drone_model,
                          num_drones=1,
                          initial_xyzs=initial_xyzs,
@@ -62,6 +63,7 @@ class HoverAviary(BaseRLAviary):
                          obs=obs,
                          act=act
                          )
+        self.TARGET_POINT = np.array([1, 1, 1])
 
     ################################################################################
     
@@ -74,17 +76,24 @@ class HoverAviary(BaseRLAviary):
             The reward.
 
         """
+        self.total_timesteps += 1
+
+        if self.total_timesteps % 100000 == 0:
+            self.TARGET_POINT = generate_random_target_point()
+        # if self.total_timesteps % 1000 == 0:
+        #     print(self.TARGET_POINT)
         state = self._getDroneStateVector(0)
-        distance = np.linalg.norm(self.TARGET_POS - state[0:3])
-        max_distance = np.linalg.norm(self.TARGET_POS)
+        distance = np.linalg.norm(self.TARGET_POINT - state[0:3])
 
-        # Define scaling factor (adjustable)
-        beta = 5 / max_distance  # Controls the sharpness of decay
+        # Define max possible distance (depends on your environment)
+        max_distance = np.linalg.norm(self.TARGET_POINT)  # Adjust if necessary
 
-        # Exponential decay function
-        reward = np.exp(-beta * distance)
+        # Normalize reward to be between 0 and 1
+        EPS = 1e-6
+        reward = - distance
 
-        return reward
+
+        return reward  # Ensure reward is non-negative
 
     ################################################################################
     
@@ -98,7 +107,7 @@ class HoverAviary(BaseRLAviary):
 
         """
         state = self._getDroneStateVector(0)
-        if np.linalg.norm(self.TARGET_POS-state[0:3]) < .0001:
+        if np.linalg.norm(self.TARGET_POINT - state[0:3]) < .0001:
             return True
         else:
             return False

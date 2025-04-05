@@ -52,3 +52,13 @@ def str2bool(val):
         return False
     else:
         raise argparse.ArgumentTypeError("[ERROR] in str2bool(), a Boolean value is expected")
+
+
+def generate_random_target_point():
+    # Generate random values for each range
+    value_1 = np.random.uniform(-1, 1)
+    value_2 = np.random.uniform(-1, 1)
+    value_3 = np.random.uniform(0.3, 1)
+
+    # Create a numpy array with the three values
+    return np.array([value_1, value_2, value_3])
