@@ -49,7 +49,7 @@ class HoverAviary(BaseRLFlyToAviary):
             The type of action space (1 or 3D; RPMS, thurst and torques, or waypoint with PID control)
 
         """
-        self.EPISODE_LEN_SEC = 16
+        self.EPISODE_LEN_SEC = 8
         self.total_timesteps = 0
         super().__init__(drone_model=drone_model,
                          num_drones=1,
@@ -63,40 +63,38 @@ class HoverAviary(BaseRLFlyToAviary):
                          obs=obs,
                          act=act
                          )
-        self.TARGET_POINT = np.array([1, 1, 1])
+        self.TARGET_POINT = np.array([0, 1, 1])
 
     ################################################################################
-    
+
     def _computeReward(self):
-        """Computes the current reward value.
-
-        Returns
-        -------
-        float
-            The reward.
-
-        """
-        self.total_timesteps += 1
-
-        if self.total_timesteps % 100000 == 0:
-            self.TARGET_POINT = generate_random_target_point()
-        # if self.total_timesteps % 1000 == 0:
-        #     print(self.TARGET_POINT)
         state = self._getDroneStateVector(0)
-        distance = np.linalg.norm(self.TARGET_POINT - state[0:3])
+        pos = state[0:3]
+        vel = state[10:13]
+        rpy = state[7:10]
 
-        # Define max possible distance (depends on your environment)
-        max_distance = np.linalg.norm(self.TARGET_POINT)  # Adjust if necessary
+        vec_to_target = self.TARGET_POINT - pos
+        dist = np.linalg.norm(vec_to_target)
 
-        # Normalize reward to be between 0 and 1
-        EPS = 1e-6
-        reward = - distance
+        # Distance reward (normalized)
+        distance_reward = 1 - np.tanh(dist)
 
+        # Penalty for high velocity (to prevent crashing)
+        velocity_penalty = -0.05 * np.linalg.norm(vel)
 
-        return reward  # Ensure reward is non-negative
+        # Orientation penalty (to discourage excessive tilting and crashes)
+        orientation_penalty = -0.5 * (abs(rpy[0]) + abs(rpy[1]))
+
+        # Bonus for being very close to the target
+        close_enough_bonus = 10.0 if dist < 0.05 else 0.0
+
+        # Time penalty to encourage faster task completion
+        time_penalty = -0.02
+
+        return distance_reward + velocity_penalty + orientation_penalty + close_enough_bonus + time_penalty
 
     ################################################################################
-    
+
     def _computeTerminated(self):
         """Computes the current done value.
 
@@ -106,14 +104,15 @@ class HoverAviary(BaseRLFlyToAviary):
             Whether the current episode is done.
 
         """
-        state = self._getDroneStateVector(0)
-        if np.linalg.norm(self.TARGET_POINT - state[0:3]) < .0001:
+        threshold = .0001
+        dist = self.TARGET_POINT - self.pos[0, :]
+        if dist @ dist < threshold * threshold:
             return True
         else:
             return False
-        
+
     ################################################################################
-    
+
     def _computeTruncated(self):
         """Computes the current truncated value.
 
@@ -123,12 +122,12 @@ class HoverAviary(BaseRLFlyToAviary):
             Whether the current episode timed out.
 
         """
-        state = self._getDroneStateVector(0)
-        if (abs(state[0]) > 1.5 or abs(state[1]) > 1.5 or state[2] > 2.0 # Truncate when the drone is too far away
-             or abs(state[7]) > .4 or abs(state[8]) > .4 # Truncate when the drone is too tilted
+        dist = self.TARGET_POINT - self.pos[0, :]
+        if (dist @ dist > (self.TARGET_POINT @ self.TARGET_POINT) * 2  # Truncate when the drone is too far away
+                or abs(self.rpy[0, 0]) > .4 or abs(self.rpy[0, 1]) > .4  # Truncate when the drone is too tilted
         ):
             return True
-        if self.step_counter/self.PYB_FREQ > self.EPISODE_LEN_SEC:
+        if self.step_counter / self.PYB_FREQ > self.EPISODE_LEN_SEC:
             return True
         else:
             return False

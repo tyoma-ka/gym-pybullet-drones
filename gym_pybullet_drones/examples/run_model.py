@@ -71,4 +71,4 @@ def run_model(path):
         logger.plot()
 
 
-run_model('results/save-03.31.2025_19.33.46/best_model.zip')
+run_model('results/save-04.09.2025_20.34.39/best_model.zip')
