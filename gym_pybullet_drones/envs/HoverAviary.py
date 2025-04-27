@@ -1,9 +1,16 @@
+import os
+
 import numpy as np
 
 from gym_pybullet_drones.envs.BaseRLAviary import BaseRLAviary
 from gym_pybullet_drones.envs.BaseRLFlyToAviary import BaseRLFlyToAviary
+from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType
-from gym_pybullet_drones.utils.utils import generate_random_target_point
+from gym_pybullet_drones.utils.utils import get_norm_path
+
+import pybullet as p
+
+
 class HoverAviary(BaseRLFlyToAviary):
     """Single agent RL problem: hover at position."""
 
@@ -19,7 +26,8 @@ class HoverAviary(BaseRLFlyToAviary):
                  gui=False,
                  record=False,
                  obs: ObservationType = ObservationType.KIN,
-                 act: ActionType = ActionType.RPM
+                 act: ActionType = ActionType.RPM,
+                 training_state_controller: TrainingStateController = None,
                  ):
         """Initialization of a single agent RL environment.
 
@@ -51,6 +59,8 @@ class HoverAviary(BaseRLFlyToAviary):
         """
         self.EPISODE_LEN_SEC = 8
         self.total_timesteps = 0
+
+        self.target_point_controller = training_state_controller
         super().__init__(drone_model=drone_model,
                          num_drones=1,
                          initial_xyzs=initial_xyzs,
@@ -61,37 +71,40 @@ class HoverAviary(BaseRLFlyToAviary):
                          gui=gui,
                          record=record,
                          obs=obs,
-                         act=act
+                         act=act,
+                         training_state_controller=training_state_controller
                          )
-        self.TARGET_POINT = np.array([0, 1, 1])
 
     ################################################################################
+
+    def _addObstacles(self):
+        pass
+        # p.loadURDF(get_norm_path("../assets/box_obstacle.urdf"),
+        #        [1, 0, .1],
+        #        p.getQuaternionFromEuler([0, 0, 0]),
+        #        physicsClientId=self.CLIENT
+        #        )
 
     def _computeReward(self):
         state = self._getDroneStateVector(0)
         pos = state[0:3]
         vel = state[10:13]
-        rpy = state[7:10]
 
-        vec_to_target = self.TARGET_POINT - pos
-        dist = np.linalg.norm(vec_to_target)
+        # --- Target and distance ---
+        target_point = self.target_point_controller.get_target_point();
+        vec_to_target = target_point - pos
+        squared_dist = np.dot(vec_to_target, vec_to_target)
+        r_gauss = np.exp(-squared_dist / 2.0) * 2
 
-        # Distance reward (normalized)
-        distance_reward = 1 - np.tanh(dist)
+        # --- Altitude shaping term ---
+        desired_z = target_point[2]
+        altitude_error = 1.0 - (pos[2] / desired_z)
+        r_altitude = np.exp(-altitude_error ** 2)
 
-        # Penalty for high velocity (to prevent crashing)
-        velocity_penalty = -0.05 * np.linalg.norm(vel)
+        # --- Smoothness term (reward low velocity) ---
+        r_smooth = np.exp(-np.linalg.norm(vel) ** 2 / 2.0)
 
-        # Orientation penalty (to discourage excessive tilting and crashes)
-        orientation_penalty = -0.5 * (abs(rpy[0]) + abs(rpy[1]))
-
-        # Bonus for being very close to the target
-        close_enough_bonus = 10.0 if dist < 0.05 else 0.0
-
-        # Time penalty to encourage faster task completion
-        time_penalty = -0.02
-
-        return distance_reward + velocity_penalty + orientation_penalty + close_enough_bonus + time_penalty
+        return r_gauss + r_altitude + 0.5 * r_smooth
 
     ################################################################################
 
@@ -105,7 +118,7 @@ class HoverAviary(BaseRLFlyToAviary):
 
         """
         threshold = .0001
-        dist = self.TARGET_POINT - self.pos[0, :]
+        dist = self.target_point_controller.get_target_point() - self.pos[0, :]
         if dist @ dist < threshold * threshold:
             return True
         else:
@@ -122,15 +135,15 @@ class HoverAviary(BaseRLFlyToAviary):
             Whether the current episode timed out.
 
         """
-        dist = self.TARGET_POINT - self.pos[0, :]
-        if (dist @ dist > (self.TARGET_POINT @ self.TARGET_POINT) * 2  # Truncate when the drone is too far away
+        dist = self.target_point_controller.get_target_point() - self.pos[0, :]
+        if (dist @ dist > (self.target_point_controller.get_target_point() @ self.target_point_controller.get_target_point()) * 2  # Truncate when the drone is too far away
                 or abs(self.rpy[0, 0]) > .4 or abs(self.rpy[0, 1]) > .4  # Truncate when the drone is too tilted
         ):
             return True
         if self.step_counter / self.PYB_FREQ > self.EPISODE_LEN_SEC:
             return True
-        else:
-            return False
+
+        return False
 
     ################################################################################
     

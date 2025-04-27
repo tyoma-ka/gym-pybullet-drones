@@ -13,6 +13,7 @@ import pybullet as p
 import pybullet_data
 import gymnasium as gym
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ImageType
+from gym_pybullet_drones.utils.utils import randomize_initial_positions
 
 
 class BaseAviary(gym.Env):
@@ -36,7 +37,8 @@ class BaseAviary(gym.Env):
                  obstacles=False,
                  user_debug_gui=True,
                  vision_attributes=False,
-                 output_folder='results'
+                 output_folder='results',
+                 training_state_controller=None,
                  ):
         """Initialization of a generic aviary environment.
 
@@ -191,6 +193,7 @@ class BaseAviary(gym.Env):
                                                             farVal=1000.0
                                                             )
         #### Set initial poses #####################################
+        self.training_state_controller = training_state_controller
         if initial_xyzs is None:
             self.INIT_XYZS = np.vstack([np.array([x*4*self.L for x in range(self.NUM_DRONES)]), \
                                         np.array([y*4*self.L for y in range(self.NUM_DRONES)]), \
@@ -484,7 +487,7 @@ class BaseAviary(gym.Env):
         self.PLANE_ID = p.loadURDF("plane.urdf", physicsClientId=self.CLIENT)
 
         self.DRONE_IDS = np.array([p.loadURDF(pkg_resources.resource_filename('gym_pybullet_drones', 'assets/'+self.URDF),
-                                              self.INIT_XYZS[i,:],
+                                              self.training_state_controller.get_and_update_initial_xyz(self.NUM_DRONES)[i,:],
                                               p.getQuaternionFromEuler(self.INIT_RPYS[i,:]),
                                               flags = p.URDF_USE_INERTIA_FROM_FILE,
                                               physicsClientId=self.CLIENT

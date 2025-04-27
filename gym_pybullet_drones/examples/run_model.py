@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 from gym_pybullet_drones.envs.HoverAviary import HoverAviary
+from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
 from stable_baselines3 import PPO
@@ -20,12 +21,21 @@ def run_model(path):
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
 
+    # Training state controller initialization
+    training_state_controller = TrainingStateController(
+        target_point=np.array([-1, -1, 0]),
+        initial_xyz=np.array([[1, 1, 1]]),
+        randomized_initial_xyz=False
+    )
+
     model = PPO.load(path)
     test_env = HoverAviary(gui=True,
                            obs=DEFAULT_OBS,
                            act=DEFAULT_ACT,
+                           training_state_controller=training_state_controller,
+                           initial_xyzs=np.array([1, 1, 1]),
                            record=True)
-    test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
+    test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT, training_state_controller=training_state_controller)
 
     logger = Logger(logging_freq_hz=int(test_env.CTRL_FREQ),
                     num_drones=1,
@@ -71,4 +81,4 @@ def run_model(path):
         logger.plot()
 
 
-run_model('results/save-04.09.2025_20.34.39/best_model.zip')
+run_model('results/save-04.27.2025_15.25.16/best_model.zip')

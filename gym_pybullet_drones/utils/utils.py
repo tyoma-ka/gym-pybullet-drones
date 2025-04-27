@@ -1,5 +1,6 @@
 """General use functions.
 """
+import os
 import time
 import argparse
 import numpy as np
@@ -54,11 +55,33 @@ def str2bool(val):
         raise argparse.ArgumentTypeError("[ERROR] in str2bool(), a Boolean value is expected")
 
 
-def generate_random_target_point():
+def randomize_target_point():
     # Generate random values for each range
     value_1 = np.random.uniform(-1, 1)
     value_2 = np.random.uniform(-1, 1)
-    value_3 = np.random.uniform(0.3, 1)
+    value_3 = np.random.uniform(0, 1)
 
     # Create a numpy array with the three values
     return np.array([value_1, value_2, value_3])
+
+
+def randomize_initial_positions(number_of_drones):
+    """
+    Randomly updates self.INIT_XYZS for each drone:
+    - X and Y in range [-1, 1]
+    - Z in range [0, 1]
+    """
+    return np.vstack([
+        np.random.uniform(-1, 1, size=number_of_drones),      # Random X between -1 and 1
+        np.random.uniform(-1, 1, size=number_of_drones),      # Random Y between -1 and 1
+        np.random.uniform(0, 1, size=number_of_drones)    # Random Z between 0.125 and 1
+    ]).transpose().reshape(number_of_drones, 3)
+
+
+def get_norm_path(path: str):
+    ret_path = os.path.join(
+        os.path.dirname(__file__),
+        path
+    )
+
+    return os.path.normpath(ret_path)

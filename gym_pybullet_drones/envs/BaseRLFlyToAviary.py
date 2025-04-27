@@ -5,6 +5,7 @@ from gymnasium import spaces
 from collections import deque
 
 from gym_pybullet_drones.envs.BaseAviary import BaseAviary
+from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType, ImageType
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 
@@ -25,7 +26,8 @@ class BaseRLFlyToAviary(BaseAviary):
                  gui=False,
                  record=False,
                  obs: ObservationType=ObservationType.KIN,
-                 act: ActionType=ActionType.RPM
+                 act: ActionType=ActionType.RPM,
+                 training_state_controller: TrainingStateController=None,
                  ):
         """Initialization of a generic single and multi-agent RL environment.
 
@@ -89,12 +91,12 @@ class BaseRLFlyToAviary(BaseAviary):
                          obstacles=True, # Add obstacles for RGB observations and/or FlyThruGate
                          user_debug_gui=False, # Remove of RPM sliders from all single agent learning aviaries
                          vision_attributes=vision_attributes,
+                         training_state_controller=training_state_controller,
                          )
         #### Set a limit on the maximum target speed ###############
         if act == ActionType.VEL:
             self.SPEED_LIMIT = 0.03 * self.MAX_SPEED_KMH * (1000/3600)
 
-        self.TARGET_POINT = np.array([0, 0, 0])
 
     ################################################################################
 
@@ -258,17 +260,15 @@ class BaseRLFlyToAviary(BaseAviary):
         elif self.OBS_TYPE == ObservationType.KIN:
             ############################################################
             #### OBS SPACE OF SIZE 15
-            #### Observation vector ### X        Y        Z       Q1   Q2   Q3   Q4   R       P       Y       VX       VY       VZ       WX       WY       WZ    Tx Ty Tz
+            #### Observation vector ###   Q1   Q2   Q3   Q4   R       P       Y       VX       VY       VZ       WX       WY       WZ    Dx Dy Dz
             lo = -np.inf
             hi = np.inf
-            obs_lower_bound = np.array([[lo, lo, 0,  # Position (X, Y, Z)
-                                         lo, lo, lo,  # Orientation (Roll, Pitch, Yaw)
+            obs_lower_bound = np.array([[lo, lo, lo,  # Orientation (Roll, Pitch, Yaw)
                                          lo, lo, lo,  # Linear velocity (Vx, Vy, Vz)
                                          lo, lo, lo,  # Angular velocity (Wx, Wy, Wz)
                                          lo, lo, lo]  # Target point (Tx, Ty, Tz)
                                         for _ in range(self.NUM_DRONES)])
             obs_upper_bound = np.array([[hi, hi, hi,
-                                         hi, hi, hi,
                                          hi, hi, hi,
                                          hi, hi, hi,
                                          hi, hi, hi]
@@ -319,19 +319,21 @@ class BaseRLFlyToAviary(BaseAviary):
         elif self.OBS_TYPE == ObservationType.KIN:
             ############################################################
             #### OBS SPACE OF SIZE 12
-            obs_15 = np.zeros((self.NUM_DRONES, 15))
+            obs_12 = np.zeros((self.NUM_DRONES, 12))
 
             for i in range(self.NUM_DRONES):
                 #obs = self._clipAndNormalizeState(self._getDroneStateVector(i))
                 obs = self._getDroneStateVector(i)
-                obs_15[i, :] = np.hstack([
-                    obs[0:3],     # Position (X, Y, Z)
+
+                vec_to_target = self.training_state_controller.get_target_point() - obs[0:3]
+
+                obs_12[i, :] = np.hstack([
                     obs[7:10],    # Orientation (Roll, Pitch, Yaw)
                     obs[10:13],   # Linear velocity (Vx, Vy, Vz)
                     obs[13:16],   # Angular velocity (Wx, Wy, Wz)
-                    self.TARGET_POINT.reshape(3,)  # Target position (Tx, Ty, Tz)
-                ]).reshape(15,)
-            ret = np.array([obs_15[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
+                    vec_to_target.reshape(3,)  # Vector distance to the target (Dx, Dy, Dz)
+                ]).reshape(12,)
+            ret = np.array([obs_12[i, :] for i in range(self.NUM_DRONES)]).astype('float32')
             #### Add action buffer to observation #######################
             for i in range(self.ACTION_BUFFER_SIZE):
                 ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])

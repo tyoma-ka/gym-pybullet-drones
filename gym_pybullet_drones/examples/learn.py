@@ -25,14 +25,16 @@ import torch
 from stable_baselines3 import PPO
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnRewardThreshold
+from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnRewardThreshold, CallbackList
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from gym_pybullet_drones.callbacks.changeTargetCallback import ChangeTargetOnRewardCallback
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.envs.HoverAviary import HoverAviary
 from gym_pybullet_drones.envs.MultiHoverAviary import MultiHoverAviary
 from gym_pybullet_drones.utils.utils import sync, str2bool
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
+from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 
 DEFAULT_GUI = False
 DEFAULT_RECORD_VIDEO = True
@@ -50,13 +52,28 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
     if not os.path.exists(filename):
         os.makedirs(filename+'/')
 
-    train_env = make_vec_env(HoverAviary,
-                             env_kwargs=dict(obs=DEFAULT_OBS, act=DEFAULT_ACT, gui=DEFAULT_GUI,),
-                             n_envs=1,
-                             seed=0
-                             )
-    eval_env = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
+    # Training state controller initialization
+    training_state_controller = TrainingStateController(
+        target_point=np.array([1, 1, 1]),
+        initial_xyz=np.array([[0, 0, 0]]),
+        randomized_initial_xyz=True,
+    )
 
+    train_env = make_vec_env(HoverAviary,
+                             env_kwargs=dict(
+                                 obs=DEFAULT_OBS,
+                                 act=DEFAULT_ACT,
+                                 gui=DEFAULT_GUI,
+                                 training_state_controller=training_state_controller,
+                                 ),
+                             n_envs=1,
+                             seed=0,
+                             )
+    eval_env = HoverAviary(
+        obs=DEFAULT_OBS,
+        act=DEFAULT_ACT,
+        training_state_controller=training_state_controller,
+        )
 
     #### Check the environment's spaces ########################
     print('[INFO] Action space:', train_env.action_space)
@@ -88,18 +105,29 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
     #### Target cumulative rewards (problem-dependent) ##########
 
     target_reward = 40000
-    callback_on_best = StopTrainingOnRewardThreshold(reward_threshold=target_reward,
-                                                     verbose=1)
-    eval_callback = EvalCallback(eval_env,
-                                 callback_on_new_best=callback_on_best,
-                                 verbose=1,
-                                 best_model_save_path=filename+'/',
-                                 log_path=filename+'/',
-                                 eval_freq=int(10000),
-                                 deterministic=True,
-                                 render=False)
+    callback_on_best = StopTrainingOnRewardThreshold(
+        reward_threshold=target_reward,
+        verbose=1)
+
+    change_target_callback = ChangeTargetOnRewardCallback(
+        reward_threshold=700,
+        training_state_controller=training_state_controller,
+        verbose=1)
+
+    eval_callback = EvalCallback(
+        eval_env,
+        callback_on_new_best=callback_on_best,
+        verbose=1,
+        best_model_save_path=filename+'/',
+        log_path=filename+'/',
+        eval_freq=int(10000),
+        deterministic=True,
+        render=False)
+
+    callback_list = CallbackList([eval_callback, change_target_callback])  # change_target_callback
+
     model.learn(total_timesteps=int(1_000_000),
-                callback=eval_callback,
+                callback=callback_list,
                 log_interval=100)
 
     #### Save the model ########################################
@@ -133,7 +161,8 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
     test_env = HoverAviary(gui=True,
                            obs=DEFAULT_OBS,
                            act=DEFAULT_ACT,
-                           record=record_video)
+                           record=record_video,
+                           )
     test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
 
     logger = Logger(logging_freq_hz=int(test_env.CTRL_FREQ),
