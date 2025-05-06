@@ -377,3 +377,4 @@ class Logger(object):
             plt.savefig(os.path.join('results', 'output_figure.png'))
         else:
             plt.savefig("output.png")
+        plt.show()

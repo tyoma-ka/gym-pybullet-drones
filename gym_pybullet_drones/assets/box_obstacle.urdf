@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <robot name="box_obstacle">
 
-    <link name="box">
+    <link name="baseLink">
 
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <box size="1 1 1"/> <!-- width, height, depth -->
+                <box size="1 0.2 1"/> <!-- width, depth, height -->
             </geometry>
             <material name="gray">
                 <color rgba="0.145 0.59 0.745 1"/>
@@ -16,7 +16,7 @@
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <box size="1 1 1"/> <!-- width, height, depth -->
+                <box size="1 0.2 1"/> <!-- width, depth, height -->
             </geometry>
         </collision>
 

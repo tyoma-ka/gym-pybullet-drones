@@ -57,6 +57,8 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         target_point=np.array([1, 1, 1]),
         initial_xyz=np.array([[0, 0, 0]]),
         randomized_initial_xyz=True,
+        randomized_collisions=True,
+        number_of_collisions=1
     )
 
     train_env = make_vec_env(HoverAviary,
@@ -126,7 +128,7 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
 
     callback_list = CallbackList([eval_callback, change_target_callback])  # change_target_callback
 
-    model.learn(total_timesteps=int(1_000_000),
+    model.learn(total_timesteps=int(10_000_000),
                 callback=callback_list,
                 log_interval=100)
 

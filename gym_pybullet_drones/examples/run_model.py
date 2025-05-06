@@ -23,9 +23,12 @@ def run_model(path):
 
     # Training state controller initialization
     training_state_controller = TrainingStateController(
-        target_point=np.array([-1, -1, 0]),
-        initial_xyz=np.array([[1, 1, 1]]),
-        randomized_initial_xyz=False
+        target_point=np.array([1, -1, 1]),
+        initial_xyz=np.array([[-1, 1, 0]]),
+        randomized_initial_xyz=False,
+        collisions_pos_orn=[([-0.3, 0.7, 0.1], [0, 0, 45])],
+        randomized_collisions=False,
+        number_of_collisions=1
     )
 
     model = PPO.load(path)
@@ -35,18 +38,18 @@ def run_model(path):
                            training_state_controller=training_state_controller,
                            initial_xyzs=np.array([1, 1, 1]),
                            record=True)
-    test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT, training_state_controller=training_state_controller)
+    # test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT, training_state_controller=training_state_controller)
 
     logger = Logger(logging_freq_hz=int(test_env.CTRL_FREQ),
                     num_drones=1,
                     output_folder=DEFAULT_OUTPUT_FOLDER,
                     colab=False
                     )
-    mean_reward, std_reward = evaluate_policy(model,
-                                              test_env_nogui,
-                                              n_eval_episodes=10
-                                              )
-    print("\n\n\nMean reward ", mean_reward, " +- ", std_reward, "\n\n")
+    # mean_reward, std_reward = evaluate_policy(model,
+    #                                           test_env_nogui,
+    #                                           n_eval_episodes=10
+    #                                           )
+    # print("\n\n\nMean reward ", mean_reward, " +- ", std_reward, "\n\n")
 
     obs, info = test_env.reset(seed=42, options={})
     start = time.time()
@@ -77,8 +80,7 @@ def run_model(path):
             obs = test_env.reset(seed=42, options={})
     test_env.close()
 
-    if DEFAULT_OBS == ObservationType.KIN:
-        logger.plot()
+    logger.plot()
 
 
-run_model('results/save-04.27.2025_15.25.16/best_model.zip')
+run_model('results/save-05.06.2025_22.12.28/best_model.zip')

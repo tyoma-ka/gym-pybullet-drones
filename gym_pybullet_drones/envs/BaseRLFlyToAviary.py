@@ -273,6 +273,13 @@ class BaseRLFlyToAviary(BaseAviary):
                                          hi, hi, hi,
                                          hi, hi, hi]
                                         for _ in range(self.NUM_DRONES)])
+            #### Add lidar point cloud ######
+            pointcloud_lower_bound = np.zeros((self.NUM_DRONES, self.NUM_RAYS))
+            pointcloud_upper_bound = np.ones((self.NUM_DRONES, self.NUM_RAYS)) * self.LASER_RANGE
+
+            obs_lower_bound = np.hstack([obs_lower_bound, pointcloud_lower_bound])
+            obs_upper_bound = np.hstack([obs_upper_bound, pointcloud_upper_bound])
+
             #### Add action buffer to observation space ################
             act_lo = -1
             act_hi = +1
@@ -337,6 +344,10 @@ class BaseRLFlyToAviary(BaseAviary):
             #### Add action buffer to observation #######################
             for i in range(self.ACTION_BUFFER_SIZE):
                 ret = np.hstack([ret, np.array([self.action_buffer[i][j, :] for j in range(self.NUM_DRONES)])])
+
+            #### Add lidar point cloud
+            ret = np.hstack([ret, np.array([self.raytraced_distances[i] for i in range(self.NUM_DRONES)])])
+
             return ret
             ############################################################
         else:

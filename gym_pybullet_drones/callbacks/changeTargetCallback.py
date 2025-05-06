@@ -19,12 +19,15 @@ class ChangeTargetOnRewardCallback(BaseCallback):
         if self.locals['dones'][0]:
             env = self.training_env.envs[0].unwrapped
 
+            # if self.counter % 100 == 0:
+            # print(env.raytraced_distances)
+
             # if self.current_episode_reward > self.reward_threshold:
-            self.training_state_controller.set_target_point(np.copy(randomize_target_point()))
+            self.training_state_controller.set_target_point(np.copy(randomize_target_point(env.obstacles_aabbs)))
                 # print(f"Target point changed to {self.target_point_controller.get_target_point()}")
 
             # print(f"Reward: {self.current_episode_reward}, steps: {self.counter}, target: {current_target}")
-            self.counter = 0
+            # self.counter = 0
             self.current_episode_reward = 0
 
         return True

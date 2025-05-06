@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 from sys import platform
 import time
 import collections
@@ -13,7 +15,7 @@ import pybullet as p
 import pybullet_data
 import gymnasium as gym
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ImageType
-from gym_pybullet_drones.utils.utils import randomize_initial_positions
+from gym_pybullet_drones.utils.utils import randomize_initial_positions, maximize_pybullet_mac
 
 
 class BaseAviary(gym.Env):
@@ -161,6 +163,12 @@ class BaseAviary(gym.Env):
             ret = p.getDebugVisualizerCamera(physicsClientId=self.CLIENT)
             print("viewMatrix", ret[2])
             print("projectionMatrix", ret[3])
+            try:
+                if sys.platform == "darwin":
+                    maximize_pybullet_mac()
+                print("Clicked green fullscreen button")
+            except Exception as e:
+                print(f"Fullscreen failed: {e}")
             if self.USER_DEBUG:
                 #### Add input sliders to the GUI ##########################
                 self.SLIDERS = -1*np.ones(4)
@@ -192,6 +200,14 @@ class BaseAviary(gym.Env):
                                                             nearVal=0.1,
                                                             farVal=1000.0
                                                             )
+        #### Set LIDAR parameters #####################################
+        self.NUM_RAYS = 16
+        self.LASER_RANGE = .5
+        self.RAY_ANGLES = np.linspace(0, 2 * np.pi, self.NUM_RAYS, endpoint=False)
+        self.raytraced_distances = []
+
+        self.obstacles_aabbs = []
+
         #### Set initial poses #####################################
         self.training_state_controller = training_state_controller
         if initial_xyzs is None:
@@ -478,6 +494,7 @@ class BaseAviary(gym.Env):
         self.ang_v = np.zeros((self.NUM_DRONES, 3))
         if self.PHYSICS == Physics.DYN:
             self.rpy_rates = np.zeros((self.NUM_DRONES, 3))
+        self.raytraced_distances = []
         #### Set PyBullet's parameters #############################
         p.setGravity(0, 0, -self.G, physicsClientId=self.CLIENT)
         p.setRealTimeSimulation(0, physicsClientId=self.CLIENT)
@@ -487,7 +504,7 @@ class BaseAviary(gym.Env):
         self.PLANE_ID = p.loadURDF("plane.urdf", physicsClientId=self.CLIENT)
 
         self.DRONE_IDS = np.array([p.loadURDF(pkg_resources.resource_filename('gym_pybullet_drones', 'assets/'+self.URDF),
-                                              self.training_state_controller.get_and_update_initial_xyz(self.NUM_DRONES)[i,:],
+                                              self.training_state_controller.get_and_update_initial_xyz(self.NUM_DRONES, self.obstacles_aabbs)[i,:],
                                               p.getQuaternionFromEuler(self.INIT_RPYS[i,:]),
                                               flags = p.URDF_USE_INERTIA_FROM_FILE,
                                               physicsClientId=self.CLIENT
@@ -516,10 +533,12 @@ class BaseAviary(gym.Env):
         and improve performance (at the expense of memory).
 
         """
+        self.raytraced_distances = []
         for i in range (self.NUM_DRONES):
             self.pos[i], self.quat[i] = p.getBasePositionAndOrientation(self.DRONE_IDS[i], physicsClientId=self.CLIENT)
             self.rpy[i] = p.getEulerFromQuaternion(self.quat[i])
             self.vel[i], self.ang_v[i] = p.getBaseVelocity(self.DRONE_IDS[i], physicsClientId=self.CLIENT)
+            self.raytraced_distances.append(self._getDroneRays(i))
     
     ################################################################################
 
@@ -1148,3 +1167,38 @@ class BaseAviary(gym.Env):
             current_position + normalized_direction * step_size
         )  # Calculate the next step
         return next_step
+
+    def _getDroneRays(self, nth_drone):
+        drone_pos = self.pos[nth_drone, :]  # (x, y, z) position
+
+        rayFrom = []
+        rayTo = []
+
+        for angle in self.RAY_ANGLES:
+            dx = self.LASER_RANGE * np.cos(angle)
+            dy = self.LASER_RANGE * np.sin(angle)
+            dz = 0  # No vertical scan for now
+
+            rayFrom.append([drone_pos[0], drone_pos[1], drone_pos[2]])
+            rayTo.append([drone_pos[0] + dx, drone_pos[1] + dy, drone_pos[2] + dz])
+
+        # Fire all rays at once
+        results = p.rayTestBatch(rayFrom, rayTo, physicsClientId=self.CLIENT)
+
+        distances = []
+        for i, r in enumerate(results):
+            hit_fraction = r[2]  # 0.0 = hit immediately, 1.0 = no hit
+            distance = hit_fraction * self.LASER_RANGE
+            distances.append(distance)
+
+            # Optionally draw only the segment until the hit point
+            hit_point = [
+                rayFrom[i][j] + hit_fraction * (rayTo[i][j] - rayFrom[i][j])
+                for j in range(3)
+            ]
+
+            # Green for hit, red for full length (missed)
+            color = [0, 1, 0] if hit_fraction < 1.0 else [1, 0, 0]
+            p.addUserDebugLine(rayFrom[i], hit_point, color, lineWidth=1.5, lifeTime=0.1, physicsClientId=self.CLIENT)
+
+        return np.array(distances, dtype=np.float32)  # (16,) distances
