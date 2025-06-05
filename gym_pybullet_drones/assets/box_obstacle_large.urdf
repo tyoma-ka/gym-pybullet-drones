@@ -6,7 +6,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <box size="0.1 0.1 2"/> <!-- width, depth, height -->
+                <box size="0.2 0.2 2"/> <!-- width, depth, height -->
             </geometry>
             <material name="gray">
                 <color rgba="0.145 0.59 0.745 1"/>
@@ -16,7 +16,7 @@
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <box size="0.1 0.1 2"/> <!-- width, depth, height -->
+                <box size="0.2 0.2 2"/> <!-- width, depth, height -->
             </geometry>
         </collision>
 

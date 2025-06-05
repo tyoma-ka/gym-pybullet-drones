@@ -1,0 +1,23 @@
+{
+  "observation_type": "kin",
+  "action_type": "rpm",
+  "default_output_folder": "results",
+  "experiment": "1",
+  "aviary": "OrientationObstacleFlyToAviary",
+  "episode_length": 10,
+  "total_timesteps": 1000000,
+  "default_gui": false,
+  "laser_range": 0.5,
+  "target_point": [1, 1, 1],
+  "initial_xyz": [[-1, -1, 0]],
+  "collisions_pos_orn": [
+    [[0, 0, 0], [0, 0, 45]]
+  ],
+  "randomized_initial_xyz": true,
+  "randomized_target_point": true,
+  "randomized_collisions": true,
+  "number_of_collisions": 1,
+  "show_gizmos": false,
+  "show_lidar_rays": false,
+  "show_velocity_vector": false
+}

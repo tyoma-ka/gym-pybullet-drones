@@ -28,62 +28,58 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnRewardThreshold, CallbackList
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from gym_pybullet_drones.callbacks.LogEvalCallback import LogEvalCallback
 from gym_pybullet_drones.callbacks.changeTargetCallback import ChangeTargetOnRewardCallback
+from gym_pybullet_drones.envs.PositionFlyToAviary import PositionFlyToAviary
+from gym_pybullet_drones.envs.PositionObstacleFlyToAviary import PositionObstacleFlyToAviary
+from gym_pybullet_drones.envs.OrientationFlyToAviary import OrientationFlyToAviary
+from gym_pybullet_drones.envs.OrientationObstacleFlyToAviary import OrientationObstacleFlyToAviary
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.envs.HoverAviary import HoverAviary
 from gym_pybullet_drones.envs.MultiHoverAviary import MultiHoverAviary
-from gym_pybullet_drones.utils.utils import sync, str2bool
+from gym_pybullet_drones.utils.TrainingLogger import TrainingLogger
+from gym_pybullet_drones.utils.constants import aviary_map
+from gym_pybullet_drones.utils.utils import sync, str2bool, load_training_config, get_norm_path
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
 from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 
-DEFAULT_GUI = False
-DEFAULT_RECORD_VIDEO = True
-DEFAULT_OUTPUT_FOLDER = 'results'
-DEFAULT_COLAB = False
 
-DEFAULT_OBS = ObservationType('kin') # 'kin' or 'rgb'
-DEFAULT_ACT = ActionType('rpm') # 'rpm' or 'pid' or 'vel' or 'one_d_rpm' or 'one_d_pid'
-DEFAULT_AGENTS = 2
-DEFAULT_MA = False
+def run():
+    cfg = load_training_config(get_norm_path("../training_config.json"))
+    training_state_controller = TrainingStateController(**cfg)
 
-def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_GUI, plot=True, colab=DEFAULT_COLAB, record_video=DEFAULT_RECORD_VIDEO, local=True):
-
-    filename = os.path.join(output_folder, 'save-'+datetime.now().strftime("%m.%d.%Y_%H.%M.%S"))
+    filename = os.path.join(training_state_controller.output_folder, 'save-'+datetime.now().strftime("%m.%d.%Y_%H.%M.%S"))
     if not os.path.exists(filename):
         os.makedirs(filename+'/')
 
-    # Training state controller initialization
-    training_state_controller = TrainingStateController(
-        target_point=np.array([1, 1, 1]),
-        initial_xyz=np.array([[0, 0, 0]]),
-        randomized_initial_xyz=True,
-        randomized_collisions=True,
-        number_of_collisions=1
-    )
+    aviary_key = training_state_controller.aviary
+    if aviary_key not in aviary_map:
+        raise ValueError(f"Unknown aviary type: {aviary_key}")
 
-    train_env = make_vec_env(HoverAviary,
+    aviary_class = aviary_map[aviary_key]
+
+    train_env = make_vec_env(aviary_class,
                              env_kwargs=dict(
-                                 obs=DEFAULT_OBS,
-                                 act=DEFAULT_ACT,
-                                 gui=DEFAULT_GUI,
+                                 obs=training_state_controller.observation_type,
+                                 act=training_state_controller.action_type,
+                                 gui=training_state_controller.gui,
                                  training_state_controller=training_state_controller,
                                  ),
                              n_envs=1,
                              seed=0,
                              )
-    eval_env = HoverAviary(
-        obs=DEFAULT_OBS,
-        act=DEFAULT_ACT,
+    eval_env = aviary_class(
+        obs=training_state_controller.observation_type,
+        act=training_state_controller.action_type,
         training_state_controller=training_state_controller,
         )
 
     #### Check the environment's spaces ########################
+    print('[INFO] Aviary:', aviary_class)
     print('[INFO] Action space:', train_env.action_space)
     print('[INFO] Observation space:', train_env.observation_space)
 
     #### Train the model #######################################
-    # train_env.observation_space.dtype = np.float32   ONLY FOR MPS
-    # train_env.action_space.dtype = np.float32        ONLY FOR MPS
     model = PPO(
         'MlpPolicy',
         train_env,
@@ -102,7 +98,32 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         # Normalize & Scale Rewards
         normalize_advantage=True,
         use_sde=True,  # Stochastic policy (improves exploration)
+        policy_kwargs=dict(net_arch=[64, 64])
     )
+
+    # model = SAC(
+    #     "MlpPolicy",  # Use MLP policy (works well for low-dimensional input)
+    #     env=train_env,  # Your drone environment
+    #     verbose=1,
+    #
+    #     # === Training Hyperparameters ===
+    #     learning_rate=3e-4,  # Common and stable; can try 1e-4 or 1e-3 if needed
+    #     buffer_size=1000000,  # Big replay buffer (default is 1M)
+    #     batch_size=256,  # Higher batch size helps stabilize SAC
+    #     tau=0.005,  # Target smoothing coefficient (for stability)
+    #     gamma=0.99,  # Discount factor for long-term rewards
+    #
+    #     # === SAC-specific Parameters ===
+    #     train_freq=1,  # Update every step
+    #     gradient_steps=1,  # One update per step (can try >1 for faster learning)
+    #     ent_coef="auto",  # Let SAC automatically tune the entropy regularization
+    #     learning_starts=10000,  # Steps before training starts
+    #
+    #     # === Policy Architecture ===
+    #     policy_kwargs=dict(
+    #         net_arch=[256, 256]  # Bigger network to handle more complex dynamics
+    #     )
+    # )
 
     #### Target cumulative rewards (problem-dependent) ##########
 
@@ -111,26 +132,26 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         reward_threshold=target_reward,
         verbose=1)
 
-    change_target_callback = ChangeTargetOnRewardCallback(
-        reward_threshold=700,
-        training_state_controller=training_state_controller,
-        verbose=1)
+    training_logger = TrainingLogger("PPO")
 
-    eval_callback = EvalCallback(
+    eval_callback = LogEvalCallback(
         eval_env,
         callback_on_new_best=callback_on_best,
         verbose=1,
         best_model_save_path=filename+'/',
         log_path=filename+'/',
-        eval_freq=int(10000),
+        eval_freq=int(10_000),
         deterministic=True,
-        render=False)
+        render=False,
+        n_eval_episodes=50,
+        training_logger=training_logger
+    )
 
-    callback_list = CallbackList([eval_callback, change_target_callback])  # change_target_callback
-
-    model.learn(total_timesteps=int(10_000_000),
-                callback=callback_list,
+    model.learn(total_timesteps=int(training_state_controller.total_timesteps),
+                callback=eval_callback,
                 log_interval=100)
+
+    training_logger.plot(filename)
 
     #### Save the model ########################################
     model.save(filename+'/final_model.zip')
@@ -141,94 +162,6 @@ def run(multiagent=DEFAULT_MA, output_folder=DEFAULT_OUTPUT_FOLDER, gui=DEFAULT_
         for j in range(data['timesteps'].shape[0]):
             print(str(data['timesteps'][j])+","+str(data['results'][j][0]))
 
-    ############################################################
-    ############################################################
-    ############################################################
-    ############################################################
-    ############################################################
-
-    if local:
-        input("Press Enter to continue...")
-
-    # if os.path.isfile(filename+'/final_model.zip'):
-    #     path = filename+'/final_model.zip'
-    if os.path.isfile(filename+'/best_model.zip'):
-        path = filename+'/best_model.zip'
-    else:
-        print("[ERROR]: no model under the specified path", filename)
-    model = PPO.load(path)
-
-    #### Show (and record a video of) the model's performance ##
-
-    test_env = HoverAviary(gui=True,
-                           obs=DEFAULT_OBS,
-                           act=DEFAULT_ACT,
-                           record=record_video,
-                           )
-    test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT)
-
-    logger = Logger(logging_freq_hz=int(test_env.CTRL_FREQ),
-                num_drones=DEFAULT_AGENTS if multiagent else 1,
-                output_folder=output_folder,
-                colab=colab
-                )
-
-    mean_reward, std_reward = evaluate_policy(model,
-                                              test_env_nogui,
-                                              n_eval_episodes=10
-                                              )
-    print("\n\n\nMean reward ", mean_reward, " +- ", std_reward, "\n\n")
-
-    obs, info = test_env.reset(seed=42, options={})
-    start = time.time()
-    for i in range((test_env.EPISODE_LEN_SEC+2)*test_env.CTRL_FREQ):
-        action, _states = model.predict(obs,
-                                        deterministic=True
-                                        )
-        obs, reward, terminated, truncated, info = test_env.step(action)
-        obs2 = obs.squeeze()
-        act2 = action.squeeze()
-        print("Obs:", obs, "\tAction", action, "\tReward:", reward, "\tTerminated:", terminated, "\tTruncated:", truncated)
-        if DEFAULT_OBS == ObservationType.KIN:
-            if not multiagent:
-                logger.log(drone=0,
-                    timestamp=i/test_env.CTRL_FREQ,
-                    state=np.hstack([obs2[0:3],
-                                        np.zeros(4),
-                                        obs2[3:15],
-                                        act2
-                                        ]),
-                    control=np.zeros(12)
-                    )
-            else:
-                for d in range(DEFAULT_AGENTS):
-                    logger.log(drone=d,
-                        timestamp=i/test_env.CTRL_FREQ,
-                        state=np.hstack([obs2[d][0:3],
-                                            np.zeros(4),
-                                            obs2[d][3:15],
-                                            act2[d]
-                                            ]),
-                        control=np.zeros(12)
-                        )
-        test_env.render()
-        print(terminated)
-        sync(i, start, test_env.CTRL_TIMESTEP)
-        if terminated:
-            obs = test_env.reset(seed=42, options={})
-    test_env.close()
-
-    if plot and DEFAULT_OBS == ObservationType.KIN:
-        logger.plot()
 
 if __name__ == '__main__':
-    #### Define and parse (optional) arguments for the script ##
-    parser = argparse.ArgumentParser(description='Single agent reinforcement learning example script')
-    parser.add_argument('--multiagent',         default=DEFAULT_MA,            type=str2bool,      help='Whether to use example LeaderFollower instead of Hover (default: False)', metavar='')
-    parser.add_argument('--gui',                default=DEFAULT_GUI,           type=str2bool,      help='Whether to use PyBullet GUI (default: True)', metavar='')
-    parser.add_argument('--record_video',       default=DEFAULT_RECORD_VIDEO,  type=str2bool,      help='Whether to record a video (default: False)', metavar='')
-    parser.add_argument('--output_folder',      default=DEFAULT_OUTPUT_FOLDER, type=str,           help='Folder where to save logs (default: "results")', metavar='')
-    parser.add_argument('--colab',              default=DEFAULT_COLAB,         type=bool,          help='Whether example is being run by a notebook (default: "False")', metavar='')
-    ARGS = parser.parse_args()
-
-    run(**vars(ARGS))
+    run()

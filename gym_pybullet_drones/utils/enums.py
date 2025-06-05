@@ -46,3 +46,9 @@ class ObservationType(Enum):
     """Observation type enumeration class."""
     KIN = "kin"     # Kinematic information (pose, linear and angular velocities)
     RGB = "rgb"     # RGB camera capture in each drone's POV
+
+class ExperimentType(Enum):
+    E0 = "0"
+    E1 = "1"
+    E2 = "2"
+    E3 = "3"

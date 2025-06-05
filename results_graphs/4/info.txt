@@ -1,0 +1,5 @@
+400k with single obstacles. Changed reward function to:
+
+is_close, closest_obstacle = is_close_to_obstacle_with_distance(self.raytraced_distances, 0, 1)
+
+r_obstacle = closest_obstacle + 0 if is_close else 1

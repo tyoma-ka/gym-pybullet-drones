@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<robot name="target_circle">
+  <link name="visual_circle">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.1" length="0.001"/>  <!-- Thin disc -->
+      </geometry>
+      <material name="red">
+        <color rgba="1 0 0 0.7"/> <!-- Semi-transparent red -->
+      </material>
+    </visual>
+  </link>
+</robot>

@@ -2,54 +2,58 @@ import os
 import time
 
 import numpy as np
+from stable_baselines3.common.evaluation import evaluate_policy
 
 from gym_pybullet_drones.envs.HoverAviary import HoverAviary
+from gym_pybullet_drones.envs.PositionFlyToAviary import PositionFlyToAviary
+from gym_pybullet_drones.envs.PositionObstacleFlyToAviary import PositionObstacleFlyToAviary
+from gym_pybullet_drones.envs.OrientationFlyToAviary import OrientationFlyToAviary
+from gym_pybullet_drones.envs.OrientationObstacleFlyToAviary import OrientationObstacleFlyToAviary
+from gym_pybullet_drones.utils.EvaluatingLogger import EvaluatingLogger
 from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 
 from gym_pybullet_drones.utils.enums import ObservationType, ActionType
-from stable_baselines3 import PPO
-from gym_pybullet_drones.utils.utils import sync, str2bool
+from stable_baselines3 import PPO, SAC
+from gym_pybullet_drones.utils.utils import sync, str2bool, load_training_config, get_norm_path, \
+    get_latest_results_folder
 from gym_pybullet_drones.utils.Logger import Logger
-from stable_baselines3.common.evaluation import evaluate_policy
-
-DEFAULT_OBS = ObservationType('kin') # 'kin' or 'rgb'
-DEFAULT_ACT = ActionType('rpm')
-DEFAULT_OUTPUT_FOLDER = 'results'
+from gym_pybullet_drones.utils.constants import aviary_map
 
 
-def run_model(path):
-    if not os.path.isfile(path):
-        raise FileNotFoundError(path)
+def run_model(open_last: bool, model_type: str, path: str | None):
+    folder_path = path
+    if open_last:
+        folder_path = get_latest_results_folder()
+        folder_path += "/final_model.zip" if model_type == "final" else "/best_model.zip"
 
-    # Training state controller initialization
-    training_state_controller = TrainingStateController(
-        target_point=np.array([1, -1, 1]),
-        initial_xyz=np.array([[-1, 1, 0]]),
-        randomized_initial_xyz=False,
-        collisions_pos_orn=[([-0.3, 0.7, 0.1], [0, 0, 45])],
-        randomized_collisions=False,
-        number_of_collisions=1
+    if not os.path.isfile(folder_path):
+        raise FileNotFoundError(folder_path)
+
+    cfg = load_training_config(get_norm_path("../gui_config.json"))
+    training_state_controller = TrainingStateController(**cfg)
+
+    model = PPO.load(folder_path)
+
+    aviary_key = training_state_controller.aviary
+    if aviary_key not in aviary_map:
+        raise ValueError(f"Unknown aviary type: {aviary_key}")
+
+    aviary_class = aviary_map[aviary_key]
+
+    test_env = aviary_class(
+        gui=training_state_controller.gui,
+        obs=training_state_controller.observation_type,
+        act=training_state_controller.action_type,
+        training_state_controller=training_state_controller,
+        initial_xyzs=np.array([1, 1, 1]),
+        record=True
     )
-
-    model = PPO.load(path)
-    test_env = HoverAviary(gui=True,
-                           obs=DEFAULT_OBS,
-                           act=DEFAULT_ACT,
-                           training_state_controller=training_state_controller,
-                           initial_xyzs=np.array([1, 1, 1]),
-                           record=True)
-    # test_env_nogui = HoverAviary(obs=DEFAULT_OBS, act=DEFAULT_ACT, training_state_controller=training_state_controller)
 
     logger = Logger(logging_freq_hz=int(test_env.CTRL_FREQ),
                     num_drones=1,
-                    output_folder=DEFAULT_OUTPUT_FOLDER,
+                    output_folder=training_state_controller.output_folder,
                     colab=False
                     )
-    # mean_reward, std_reward = evaluate_policy(model,
-    #                                           test_env_nogui,
-    #                                           n_eval_episodes=10
-    #                                           )
-    # print("\n\n\nMean reward ", mean_reward, " +- ", std_reward, "\n\n")
 
     obs, info = test_env.reset(seed=42, options={})
     start = time.time()
@@ -62,25 +66,30 @@ def run_model(path):
         act2 = action.squeeze()
         print("Obs:", obs, "\tAction", action, "\tReward:", reward, "\tTerminated:", terminated, "\tTruncated:",
               truncated)
-        if DEFAULT_OBS == ObservationType.KIN:
+        # print(reward)
+        if training_state_controller.observation_type == ObservationType.KIN:
 
             logger.log(drone=0,
                        timestamp=i / test_env.CTRL_FREQ,
-                       state=np.hstack([obs2[0:3],
-                                        np.zeros(4),
+                       state=np.hstack([obs2[9:12],
+                                        obs2[0:3],
+                                        np.zeros(1),
                                         obs2[3:15],
-                                        act2
+                                        act2,
+                                        reward
                                         ]),
                        control=np.zeros(12)
                        )
         test_env.render()
-        print(terminated)
         sync(i, start, test_env.CTRL_TIMESTEP)
         if terminated:
-            obs = test_env.reset(seed=42, options={})
+            obs, info = test_env.reset(seed=42, options={})
     test_env.close()
 
-    logger.plot()
+    logger.plot_distances(save_path=os.path.dirname(folder_path) + "/ep_distance_plot.png")
+    logger.plot_velocity(save_path=os.path.dirname(folder_path) + "/ep_velocity_plot.png")
+    logger.plot_orientation(save_path=os.path.dirname(folder_path) + "/ep_orientation_plot.png")
+    logger.plot_reward(save_path=os.path.dirname(folder_path) + "/ep_reward_plot.png")
 
 
-run_model('results/save-05.06.2025_22.12.28/best_model.zip')
+run_model(True, "best", 'results/save-06.01.2025_10.03.57/best_model.zip')

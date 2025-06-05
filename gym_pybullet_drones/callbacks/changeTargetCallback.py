@@ -2,7 +2,6 @@ from stable_baselines3.common.callbacks import BaseCallback
 import numpy as np
 
 from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
-from gym_pybullet_drones.utils.utils import randomize_target_point
 
 
 class ChangeTargetOnRewardCallback(BaseCallback):
@@ -23,8 +22,7 @@ class ChangeTargetOnRewardCallback(BaseCallback):
             # print(env.raytraced_distances)
 
             # if self.current_episode_reward > self.reward_threshold:
-            self.training_state_controller.set_target_point(np.copy(randomize_target_point(env.obstacles_aabbs)))
-                # print(f"Target point changed to {self.target_point_controller.get_target_point()}")
+            # print(f"Target point changed to {self.target_point_controller.get_target_point()}")
 
             # print(f"Reward: {self.current_episode_reward}, steps: {self.counter}, target: {current_target}")
             # self.counter = 0

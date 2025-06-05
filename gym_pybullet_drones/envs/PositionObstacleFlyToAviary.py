@@ -7,11 +7,10 @@ from gym_pybullet_drones.envs.BaseRLFlyToAviary import BaseRLFlyToAviary
 from gym_pybullet_drones.utils.TrainingStateController import TrainingStateController
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType, ExperimentType
 from gym_pybullet_drones.utils.utils import get_norm_path, is_close_to_obstacle, \
-    draw_target_circle, is_close_to_obstacle_with_distance
-import pybullet as p
+    draw_target_circle, is_close_to_obstacle_with_distance, get_obstacle_term, normalize, get_closest_obstacle_distance
 
 
-class HoverAviary(BaseRLFlyToAviary):
+class PositionObstacleFlyToAviary(BaseRLFlyToAviary):
     """Single agent RL problem: hover at position."""
 
     ################################################################################
@@ -59,7 +58,6 @@ class HoverAviary(BaseRLFlyToAviary):
         """
         self.EPISODE_LEN_SEC = training_state_controller.episode_length
 
-        self.training_state_controller = training_state_controller
         super().__init__(drone_model=drone_model,
                          num_drones=1,
                          initial_xyzs=initial_xyzs,
@@ -76,21 +74,6 @@ class HoverAviary(BaseRLFlyToAviary):
 
     ################################################################################
 
-    def _addObstacles(self):
-        self.obstacles_aabbs = []
-        self.obstacle_ids = []
-        pos_orn_list = self.training_state_controller.get_and_update_collisions_pos_orn()
-        for pos, orn in pos_orn_list:
-            obstacle_id = p.loadURDF(get_norm_path("../assets/box_obstacle.urdf"),
-                                     pos,
-                                     orn,
-                                     physicsClientId=self.CLIENT
-                                     )
-            self.obstacle_ids.append(obstacle_id)
-            # Get AABB (axis-aligned bounding box)
-            aabb_min, aabb_max = p.getAABB(obstacle_id, physicsClientId=self.CLIENT)
-            self.obstacles_aabbs.append((aabb_min, aabb_max))
-
     def _computeReward(self):
         state = self._getDroneStateVector(0)
         pos = state[0:3]
@@ -101,19 +84,9 @@ class HoverAviary(BaseRLFlyToAviary):
         # --- Target and distance ---
         target_point = self.training_state_controller.get_target_point()
         vec_to_target = target_point - pos
-        distance = np.linalg.norm(vec_to_target)
 
         squared_dist = np.dot(vec_to_target, vec_to_target)
         r_gauss = np.exp(-squared_dist / 2.0)
-
-        # --- Direction term
-        if distance > 0 and np.linalg.norm(vel) > 0:
-            direction_reward = np.dot(vec_to_target, vel) / (distance * np.linalg.norm(vel))
-        else:
-            direction_reward = 0.0
-
-            # Optional: scale reward to be in a range, e.g., [0, 1]
-        r_direction = max(0.0, direction_reward)  # Only reward for flying toward, not away
 
         # --- Altitude shaping term ---
         desired_z = target_point[2]
@@ -128,17 +101,26 @@ class HoverAviary(BaseRLFlyToAviary):
         r_stability = np.exp(-(pitch ** 2 + roll ** 2))
 
         # --- Obstacle term
-        is_close, closest_obstacle = is_close_to_obstacle_with_distance(self.raytraced_distances, 0, 0.5)
-        # r_obstacle = closest_obstacle + 0 if is_close else 1
-        r_obstacle = 0 if is_close_to_obstacle(self.raytraced_distances, 0, 0.5) else 1
-        r_obstacle = closest_obstacle
+        closest_distance = get_closest_obstacle_distance(self.raytraced_distances, 0)
+
+        ### Obstacle Approach Penalty term
+        # r_cos_obstacle = get_obstacle_term(self.raytraced_directions, vel, 0, self.training_state_controller.laser_range)
+        # r_obstacle = 1 - r_cos_obstacle
+
+        ### Continuous term
+        # r_obstacle = normalize(closest_distance, 0, self.training_state_controller.laser_range)
+
+        ### Discrete term
+        r_obstacle = 1 if normalize(closest_distance, 0, self.training_state_controller.laser_range) == 1 else 0
 
         self._showVelocityVector(pos, vel)
 
-        if distance < 0.5:
-            return r_gauss + r_obstacle
+        if self._droneReachedTargetPoint(0.1):
+            r_precision = np.exp(-squared_dist / 0.005)  # Sharper curve near 0
+            r_gauss += 2.0 * r_precision
+            r_obstacle = 1
 
-        return r_direction + r_obstacle
+        return r_gauss * 1.5 + r_altitude * 1.5 + r_smooth * 0.5 + r_stability * 0.5 + r_obstacle
 
     ################################################################################
 
@@ -153,12 +135,6 @@ class HoverAviary(BaseRLFlyToAviary):
         """
 
         return self._droneReachedTargetPoint()
-
-        # Not working at all, doesn't help
-        # if self._droneHitObstacle():
-        #     return True
-
-        return False
 
     ################################################################################
 
@@ -177,21 +153,9 @@ class HoverAviary(BaseRLFlyToAviary):
 
         if abs(self.rpy[0, 0]) > .4 or abs(self.rpy[0, 1]) > .4:
             return True
+        if self._droneHitObstacle():
+            return True
         if self.step_counter / self.PYB_FREQ > self.EPISODE_LEN_SEC:
             return True
 
         return False
-
-    ################################################################################
-    def _computeInfo(self):
-        """Computes the current info dict(s).
-
-        Unused.
-
-        Returns
-        -------
-        dict[str, int]
-            Dummy value.
-
-        """
-        return {"answer": 42}  #### Calculated by the Deep Thought supercomputer in 7.5M years

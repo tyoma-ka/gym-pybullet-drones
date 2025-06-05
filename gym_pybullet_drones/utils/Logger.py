@@ -48,9 +48,10 @@ class Logger(object):
         self.counters = np.zeros(num_drones)
         self.timestamps = np.zeros((num_drones, duration_sec*self.LOGGING_FREQ_HZ))
         #### Note: this is the suggest information to log ##############################
-        self.states = np.zeros((num_drones, 16, duration_sec*self.LOGGING_FREQ_HZ)) #### 16 states: pos_x,
-                                                                                                  # pos_y,
-                                                                                                  # pos_z,
+        self.states = np.zeros((num_drones, 20, duration_sec*self.LOGGING_FREQ_HZ)) #### 17 states: distance_x,
+                                                                                                  # distance_y,
+                                                                                                  # distance_z,
+                                                                                                  # reward,
                                                                                                   # vel_x,
                                                                                                   # vel_y,
                                                                                                   # vel_z,
@@ -63,7 +64,12 @@ class Logger(object):
                                                                                                   # rpm0,
                                                                                                   # rpm1,
                                                                                                   # rpm2,
-                                                                                                  # rpm3
+                                                                                                  # rpm3,
+                                                                                                  # v_x,
+                                                                                                  # v_y,
+                                                                                                  # v_z,
+
+
         #### Note: this is the suggest information to log ##############################
         self.controls = np.zeros((num_drones, 12, duration_sec*self.LOGGING_FREQ_HZ)) #### 12 control targets: pos_x,
                                                                                                              # pos_y,
@@ -77,7 +83,7 @@ class Logger(object):
                                                                                                              # ang_vel_x,
                                                                                                              # ang_vel_y,
                                                                                                              # ang_vel_z
-
+        self.target_logs = []
     ################################################################################
 
     def log(self,
@@ -95,18 +101,18 @@ class Logger(object):
         timestamp : float
             Timestamp of the log in simulation clock.
         state : ndarray
-            (20,)-shaped array of floats containing the drone's state.
+            (21,)-shaped array of floats containing the drone's state.
         control : ndarray, optional
             (12,)-shaped array of floats containing the drone's control target.
 
         """
-        if drone < 0 or drone >= self.NUM_DRONES or timestamp < 0 or len(state) != 20 or len(control) != 12:
-            print("[ERROR] in Logger.log(), invalid data")
+        # if drone < 0 or drone >= self.NUM_DRONES or timestamp < 0 or len(state) != 21 or len(control) != 12:
+        #     print("[ERROR] in Logger.log(), invalid data")
         current_counter = int(self.counters[drone])
         #### Add rows to the matrices if a counter exceeds their size
         if current_counter >= self.timestamps.shape[1]:
             self.timestamps = np.concatenate((self.timestamps, np.zeros((self.NUM_DRONES, 1))), axis=1)
-            self.states = np.concatenate((self.states, np.zeros((self.NUM_DRONES, 16, 1))), axis=2)
+            self.states = np.concatenate((self.states, np.zeros((self.NUM_DRONES, 20, 1))), axis=2)
             self.controls = np.concatenate((self.controls, np.zeros((self.NUM_DRONES, 12, 1))), axis=2)
         #### Advance a counter is the matrices have overgrown it ###
         elif not self.PREALLOCATED_ARRAYS and self.timestamps.shape[1] > current_counter:
@@ -114,7 +120,7 @@ class Logger(object):
         #### Log the information and increase the counter ##########
         self.timestamps[drone, current_counter] = timestamp
         #### Re-order the kinematic obs (of most Aviaries) #########
-        self.states[drone, :, current_counter] = np.hstack([state[0:3], state[10:13], state[7:10], state[13:20]])
+        self.states[drone, :, current_counter] = np.hstack([state[0:3], state[23], state[7:10], state[10:13], state[13:20], state[3:6]])
         self.controls[drone, :, current_counter] = control
         self.counters[drone] = current_counter + 1
 
@@ -377,4 +383,96 @@ class Logger(object):
             plt.savefig(os.path.join('results', 'output_figure.png'))
         else:
             plt.savefig("output.png")
-        plt.show()
+        # plt.show()
+
+    def plot_distances(self, drone_ids=None, save_path="ep_distance_plot.png"):
+        num_drones, _, num_steps = self.states.shape
+        t = np.arange(0, self.timestamps.shape[1]/self.LOGGING_FREQ_HZ, 1/self.LOGGING_FREQ_HZ)
+
+        if drone_ids is None:
+            drone_ids = range(num_drones)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for j in drone_ids:
+            distance = np.linalg.norm(self.states[j, 0:3, :], axis=0)
+
+            ax.plot(t, self.states[j, 0, :], label=f"x", linestyle='--')
+            ax.plot(t, self.states[j, 1, :], label=f"y", linestyle='--')
+            ax.plot(t, self.states[j, 2, :], label=f"z", linestyle='--')
+            ax.plot(t, distance, label=f"distance", linestyle='-')
+
+        ax.set_title("Distance to the target over episode")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Distance (m)")
+        ax.grid(True)
+        ax.legend(loc='upper right')
+
+        plt.tight_layout()
+        plt.savefig(save_path)
+
+    def plot_orientation(self, drone_ids=None, save_path="ep_orientation_plot.png"):
+        num_drones, _, num_steps = self.states.shape
+        t = np.arange(0, self.timestamps.shape[1]/self.LOGGING_FREQ_HZ, 1/self.LOGGING_FREQ_HZ)
+
+        if drone_ids is None:
+            drone_ids = range(num_drones)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for j in drone_ids:
+            # distance = np.linalg.norm(self.states[j, 4:7, :], axis=0)
+
+            ax.plot(t, self.states[j, 4, :], label=f"roll", linestyle='--')
+            ax.plot(t, self.states[j, 5, :], label=f"pitch", linestyle='--')
+            ax.plot(t, self.states[j, 6, :], label=f"yaw", linestyle='--')
+            # ax.plot(t, distance, label=f"distance", linestyle='-')
+
+        ax.set_title("Orientation over episode")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Orientation")
+        ax.grid(True)
+        ax.legend(loc='upper right')
+
+        plt.tight_layout()
+        plt.savefig(save_path)
+
+    def plot_reward(self, drone_ids=None, save_path="ep_reward_plot.png"):
+        num_drones, _, num_steps = self.states.shape
+        t = np.arange(0, self.timestamps.shape[1] / self.LOGGING_FREQ_HZ, 1 / self.LOGGING_FREQ_HZ)
+
+        if drone_ids is None:
+            drone_ids = range(num_drones)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for j in drone_ids:
+            ax.plot(t, self.states[j, 3, :], label=f"reward", linestyle='-')
+
+        ax.set_title("Reward over episode")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Reward")
+        ax.grid(True)
+        ax.legend(loc='upper right')
+
+        plt.tight_layout()
+        plt.savefig(save_path)
+
+    def plot_velocity(self, drone_ids=None, save_path="ep_velocity_plot.png"):
+        num_drones, _, num_steps = self.states.shape
+        t = np.arange(0, self.timestamps.shape[1] / self.LOGGING_FREQ_HZ, 1 / self.LOGGING_FREQ_HZ)
+
+        if drone_ids is None:
+            drone_ids = range(num_drones)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for j in drone_ids:
+            velocity = np.linalg.norm(self.states[j, 17:20, :], axis=0)
+            ax.plot(t, velocity, label=f"velocity", linestyle='-')
+
+        ax.set_title("Velocity over episode")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Velocity")
+        ax.grid(True)
+        ax.legend(loc='upper right')
+
+        plt.tight_layout()
+        plt.savefig(save_path)
+
