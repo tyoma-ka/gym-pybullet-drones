@@ -106,7 +106,7 @@ class BaseRLFlyToAviary(BaseAviary):
         self.obstacle_ids = []
         pos_orn_list = self.training_state_controller.get_and_update_collisions_pos_orn()
         for pos, orn in pos_orn_list:
-            obstacle_id = p.loadURDF(get_norm_path("../assets/box_obstacle_large.urdf"),
+            obstacle_id = p.loadURDF(get_norm_path("../assets/box_obstacle.urdf"),
                                      pos,
                                      orn,
                                      physicsClientId=self.CLIENT
@@ -398,7 +398,7 @@ class BaseRLFlyToAviary(BaseAviary):
                 threshold = .05
             else:
                 threshold = 0
-        dist = self.training_state_controller.get_target_point() - self.pos[0, :]
+        dist = self.training_state_controller.target_point - self.pos[0, :]
         if dist @ dist < threshold * threshold:
             return True
         else:

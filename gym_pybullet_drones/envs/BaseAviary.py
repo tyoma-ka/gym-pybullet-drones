@@ -202,7 +202,7 @@ class BaseAviary(gym.Env):
                                                             farVal=1000.0
                                                             )
         #### Set LIDAR parameters #####################################
-        self.NUM_YAW = 32
+        self.NUM_YAW = 36
         self.NUM_PITCH = 1
         self.NUM_RAYS = self.NUM_YAW * self.NUM_PITCH
         self.raytraced_distances = []
@@ -498,6 +498,7 @@ class BaseAviary(gym.Env):
             self.rpy_rates = np.zeros((self.NUM_DRONES, 3))
         self.raytraced_distances = []
         self.raytraced_directions = []
+        self.all_ray_directions = []
         #### Set PyBullet's parameters #############################
         p.setGravity(0, 0, -self.G, physicsClientId=self.CLIENT)
         p.setRealTimeSimulation(0, physicsClientId=self.CLIENT)
@@ -540,14 +541,16 @@ class BaseAviary(gym.Env):
         self.raytraced_distances = []
         self.raytraced_directions = []
         self.closest_vector_to_obstacle = None
+        self.all_ray_directions = []
         for i in range (self.NUM_DRONES):
             self.pos[i], self.quat[i] = p.getBasePositionAndOrientation(self.DRONE_IDS[i], physicsClientId=self.CLIENT)
             self.rpy[i] = p.getEulerFromQuaternion(self.quat[i])
             self.vel[i], self.ang_v[i] = p.getBaseVelocity(self.DRONE_IDS[i], physicsClientId=self.CLIENT)
-            distances, directions, closest_vector_to_obstacle = self._getDroneRays(i)
+            distances, directions, all_ray_directions, closest_vector_to_obstacle = self._getDroneRays(i)
             self.raytraced_distances.append(distances)
             self.raytraced_directions.append(directions)
             self.closest_vector_to_obstacle = closest_vector_to_obstacle
+            self.all_ray_directions = all_ray_directions
     
     ################################################################################
 
@@ -1182,12 +1185,13 @@ class BaseAviary(gym.Env):
         drone_quat = self.quat[nth_drone, :]
 
         rayFrom, rayTo = generate_ray_directions(drone_pos, drone_quat, self.training_state_controller.laser_range, self.NUM_YAW, self.NUM_PITCH)
-
+        all_initial_directions = rayTo - rayFrom
         # Fire all rays at once
         results = p.rayTestBatch(rayFrom, rayTo, physicsClientId=self.CLIENT)
 
         distances = []
         vectors_to_obstacles = []
+        all_ray_vectors = all_initial_directions
         min_distance = self.training_state_controller.laser_range
         closest_vector_to_obstacle = [min_distance, min_distance, min_distance]
 
@@ -1200,7 +1204,7 @@ class BaseAviary(gym.Env):
 
             if distance < self.training_state_controller.laser_range:
                 vectors_to_obstacles.append(direction)
-
+                all_ray_vectors[i] = direction
             # Draw only the segment until the hit point
             hit_point = [
                 rayFrom[i][j] + hit_fraction * (rayTo[i][j] - rayFrom[i][j])
@@ -1217,4 +1221,4 @@ class BaseAviary(gym.Env):
             if self.training_state_controller.show_lidar_rays:
                 p.addUserDebugLine(rayFrom[i], hit_point, color, lineWidth=1.5, lifeTime=0.1, physicsClientId=self.CLIENT)
 
-        return np.array(distances), np.array(vectors_to_obstacles), np.array(closest_vector_to_obstacle)
+        return np.array(distances), np.array(vectors_to_obstacles), np.array(all_ray_vectors), np.array(closest_vector_to_obstacle)

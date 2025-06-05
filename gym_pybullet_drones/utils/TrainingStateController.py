@@ -107,8 +107,8 @@ class TrainingStateController:
     def update_target_point(self, obstacles_aabbs):
         if self.randomized_target_point:
             if self.experiment == ExperimentType.E0 or self.experiment == ExperimentType.E1:
-                # self.target_point = randomize_target_point(obstacles_aabbs)
-                self.target_point = get_opposite_point(self.previous_xyz[0])
+                self.target_point = randomize_target_point(obstacles_aabbs)
+                # self.target_point = get_opposite_point(self.previous_xyz[0])
             elif self.experiment == ExperimentType.E2 or self.experiment == ExperimentType.E3:
                 self.target_point = get_random_point_in_range(-1, 1, 0.5, 1, 0.1, 1)
         self.show_target_point_circle()

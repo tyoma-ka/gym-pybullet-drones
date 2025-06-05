@@ -246,3 +246,62 @@ def compute_avoidance_point(drone_position, obstacle_vector, offset_distance):
         drone_position[2]
     ])
     return target_point
+
+
+def find_gap_direction(ray_directions, ray_distances, max_range, target_vector):
+
+    ray_distances = np.array(ray_distances)
+    ray_directions = np.array(ray_directions)
+    target_vector = target_vector / np.linalg.norm(target_vector)
+
+    is_free = ray_distances >= max_range
+    N = len(is_free)
+
+    gaps = []
+    current_start = None
+
+    for i in range(N + 1):
+        if i < N and is_free[i]:
+            if current_start is None:
+                current_start = i
+        else:
+            if current_start is not None:
+                gap_len = i - current_start
+                gaps.append((current_start, gap_len))
+                current_start = None
+
+    if not gaps:
+        return None  # fallback
+
+    best_gap_len = -1
+    best_gap_center_direction = None
+
+    for gap_start, gap_len in gaps:
+        gap_end = gap_start + gap_len
+
+        if not is_gap_facing_target(ray_directions, gap_start, gap_end, target_vector):
+            continue
+
+        # Ray in the gap most aligned with the target
+        if gap_len > best_gap_len:
+            best_gap_len = gap_len
+            center_idx = gap_start + gap_len // 2
+            best_gap_center_direction = ray_directions[center_idx]
+
+    if best_gap_center_direction is None:
+        return -target_vector / np.linalg.norm(target_vector)  # fallback
+
+    return best_gap_center_direction / np.linalg.norm(best_gap_center_direction)
+
+
+def is_gap_facing_target(ray_directions, gap_start, gap_end, target_vector, max_angle_deg=20):
+    target_vector = target_vector / np.linalg.norm(target_vector)
+    cos_threshold = np.cos(np.radians(max_angle_deg))  # e.g., cos(30°) ≈ 0.866
+
+    for i in range(gap_start, gap_end):
+        ray_dir = ray_directions[i]
+        ray_dir = ray_dir / np.linalg.norm(ray_dir)  # safety normalization
+        dot = np.dot(ray_dir, target_vector)
+        if dot > cos_threshold:
+            return True
+    return False

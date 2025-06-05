@@ -8,7 +8,7 @@ from gym_pybullet_drones.utils.TrainingStateController import TrainingStateContr
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ActionType, ObservationType, ExperimentType
 from gym_pybullet_drones.utils.utils import get_norm_path, is_close_to_obstacle, \
     draw_target_circle, is_close_to_obstacle_with_distance, get_obstacle_term, normalize, get_closest_obstacle_distance, \
-    compute_avoidance_point
+    compute_avoidance_point, find_gap_direction
 
 
 class OrientationObstacleFlyToAviary(BaseRLFlyToAviary):
@@ -107,11 +107,24 @@ class OrientationObstacleFlyToAviary(BaseRLFlyToAviary):
         ### Discrete term
         r_obstacle = 1 if normalize(closest_distance, 0, self.training_state_controller.laser_range) == 1 else 0
 
-        if closest_distance < self.training_state_controller.laser_range:
+        if not self._droneReachedTargetPoint(0.2) and closest_distance < self.training_state_controller.laser_range:
             new_local_target = compute_avoidance_point(pos, self.closest_vector_to_obstacle, 0.2)
             self.training_state_controller.set_local_target_point(new_local_target)
         else:
             self.training_state_controller.set_local_target_point(None)
+
+        # if not self._droneReachedTargetPoint(0.2) and closest_distance < self.training_state_controller.laser_range:
+        #     best_direction = find_gap_direction(self.all_ray_directions,
+        #                                         self.raytraced_distances[0],
+        #                                         self.training_state_controller.laser_range,
+        #                                         self.training_state_controller.target_point - pos)
+        #     if best_direction is None:
+        #         self.training_state_controller.set_local_target_point(None)
+        #     else:
+        #         new_local_target = pos + best_direction * 0.5
+        #         self.training_state_controller.set_local_target_point(new_local_target)
+        # else:
+        #     self.training_state_controller.set_local_target_point(None)
 
         self._showVelocityVector(pos, vel)
 
