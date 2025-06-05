@@ -1,0 +1,1 @@
+400k with single obstacles. However the model is not working properly

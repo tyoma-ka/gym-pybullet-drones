@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<robot name="box_obstacle">
+
+    <link name="baseLink">
+
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.2 0.2 2"/> <!-- width, depth, height -->
+            </geometry>
+            <material name="gray">
+                <color rgba="0.145 0.59 0.745 1"/>
+            </material>
+        </visual>
+
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.2 0.2 2"/> <!-- width, depth, height -->
+            </geometry>
+        </collision>
+
+        <inertial>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>
+        </inertial>
+
+    </link>
+
+</robot>

@@ -140,7 +140,7 @@ class BaseRLAviary(BaseAviary):
         """
         if self.ACT_TYPE in [ActionType.RPM, ActionType.VEL]:
             size = 4
-        elif self.ACT_TYPE==ActionType.PID:
+        elif self.ACT_TYPE == ActionType.PID:
             size = 3
         elif self.ACT_TYPE in [ActionType.ONE_D_RPM, ActionType.ONE_D_PID]:
             size = 1

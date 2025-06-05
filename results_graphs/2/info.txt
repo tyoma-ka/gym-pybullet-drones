@@ -1,0 +1,1 @@
+on 1 million steps without obstacles. Showed, that 400k would be enough. 
